@@ -1,0 +1,26 @@
+# Git and editor
+.git
+.gitignore
+.vscode
+
+# Python environments and caches
+.venv
+venv
+agentic_clean
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.pytest_cache
+.mypy_cache
+
+# Build artifacts
+build
+dist
+*.egg-info
+
+# Local docs and outputs not needed for container build context
+folder_structure.txt
+experiments
+Vector_Store/faiss
+.cache

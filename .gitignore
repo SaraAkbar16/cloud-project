@@ -1,0 +1,54 @@
+# Virtual environment
+agentic_clean/
+venv/
+.env/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS files
+.DS_Store
+Thumbs.db
+Data/docs
+scripts/
+
+infra-automation/terraform/.terraform/
+infra-automation/terraform/terraform.tfstate
+infra-automation/terraform/terraform.tfstate.*
+*.tfvars
+
+# Docker / archives
+*.tar
+*.zip
+*.exe
+
+# Vector stores
+Vector_Store/chroma/
+Vector_Store/faiss/*.faiss
+Vector_Store/faiss/*.pkl
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+
+
+# Archives & binaries
+*.tar
+*.zip
+*.exe
+
+# Secrets / random files
+ubuntu@*
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.pyc
+.venv/

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-service
+  labels:
+    app: app
+spec:
+  type: NodePort
+  selector:
+    # Must match pod labels from the deployment template.
+
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+      protocol: TCP

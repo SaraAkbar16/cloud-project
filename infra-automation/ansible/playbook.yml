@@ -1,0 +1,108 @@
+---
+- name: Prepare Ubuntu EC2 host for kubeadm Kubernetes readiness
+  hosts: k8s
+  become: true
+  gather_facts: true
+
+  vars:
+    kubernetes_channel: "v1.29"
+
+  handlers:
+    - name: Reload sysctl settings
+      ansible.builtin.command: sysctl --system
+      changed_when: false
+
+  tasks:
+    - name: Ensure base packages required for apt repositories are present
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Check whether swap is currently enabled
+      ansible.builtin.command: swapon --noheadings --show
+      register: swap_status
+      changed_when: false
+
+    - name: Disable swap immediately
+      ansible.builtin.command: swapoff -a
+      when: swap_status.stdout | trim != ""
+
+    - name: Disable swap entries in fstab permanently
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^(?!#)(\S+\s+\S+\s+swap\s+\S+.*)$'
+        replace: '# \1'
+
+    - name: Ensure br_netfilter module loads at boot
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/k8s.conf
+        content: |
+          br_netfilter
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Load br_netfilter module now
+      ansible.builtin.command: modprobe br_netfilter
+      changed_when: false
+
+    - name: Configure Kubernetes networking sysctl settings
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/99-kubernetes.conf
+        content: |
+          net.bridge.bridge-nf-call-iptables = 1
+          net.ipv4.ip_forward = 1
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload sysctl settings
+
+    - name: Ensure apt keyrings directory exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Add Kubernetes apt repository signing key
+      ansible.builtin.get_url:
+        url: "https://pkgs.k8s.io/core:/stable:/{{ kubernetes_channel }}/deb/Release.key"
+        dest: /etc/apt/keyrings/kubernetes-apt-keyring.asc
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Add Kubernetes apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.asc] https://pkgs.k8s.io/core:/stable:/{{ kubernetes_channel }}/deb/ /"
+        filename: kubernetes
+        state: present
+
+    - name: Install Docker and Kubernetes components
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+        update_cache: true
+
+    - name: Enable and start Docker service
+      ansible.builtin.service:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Enable and start kubelet service
+      ansible.builtin.service:
+        name: kubelet
+        enabled: true
+        state: started

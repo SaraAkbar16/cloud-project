@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1.7
+
+# Use Python slim image
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/app/.cache/huggingface \
+    TRANSFORMERS_CACHE=/app/.cache/huggingface/hub
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential gcc libffi-dev libssl-dev libxml2-dev libxslt1-dev cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy backend requirements
+COPY requirements.backend.txt /app/requirements.backend.txt
+
+# Install Python packages with a cached pip directory for faster rebuilds
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install -r /app/requirements.backend.txt
+
+# Copy app code
+COPY app /app/app
+COPY embeddings /app/embeddings
+COPY Vector_Store /app/Vector_Store
+COPY data /app/data
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
