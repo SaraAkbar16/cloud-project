@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: rag-backend
+  namespace: argocd
+  # ArgoCD will clean up all child resources when this Application is deleted
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    # ── Replace with your actual GitHub repository URL ──────────────────────
+    repoURL: https://github.com/SaraAkbar16/cloud-project.git
+    targetRevision: main
+    # Directory that contains the Kubernetes manifests ArgoCD should manage
+    path: k8s
+
+  destination:
+    # Deploy into the cluster where ArgoCD itself is running
+    server: https://kubernetes.default.svc
+    namespace: SaraAkbar16
+  syncPolicy:
+    automated:
+      # Remove resources from the cluster if they are deleted from Git
+      prune: true
+      # Revert any manual changes made directly to the cluster (drift correction)
+      selfHeal: true
+    syncOptions:
+      # Create the destination namespace automatically if it doesn't exist
+      - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

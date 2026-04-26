@@ -1,0 +1,105 @@
+name: CI/CD – Build, Push & Update Manifests
+
+# Triggers:
+#  - Push to main  → full pipeline (build → push → update manifests)
+#  - PR to main    → build only (no push, no manifest update – acts as a gate)
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  # Resulting GHCR image: ghcr.io/<owner>/rag-backend
+  IMAGE_REPO: ${{ github.repository_owner }}/rag-backend
+
+jobs:
+  # ── Job 1: Build Docker image and push to GHCR ────────────────────────────
+  build-and-push:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write        # required to push to ghcr.io
+
+    outputs:
+      short_sha: ${{ steps.vars.outputs.short_sha }}
+      image: ${{ steps.img.outputs.name }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Short commit SHA used as the immutable image tag
+      - name: Compute short SHA
+        id: vars
+        run: echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # OCI spec requires image names to be fully lowercase
+      - name: Normalise image name to lowercase
+        id: img
+        run: |
+          echo "name=$(echo '${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}' | tr '[:upper:]' '[:lower:]')" \
+            >> "$GITHUB_OUTPUT"
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.backend
+          # Only push on a real push event (not on PR builds)
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            ${{ steps.img.outputs.name }}:${{ steps.vars.outputs.short_sha }}
+            ${{ steps.img.outputs.name }}:latest
+          # Use GitHub Actions cache to speed up subsequent builds
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Job 2: Patch k8s manifests so ArgoCD picks up the new image ───────────
+  update-manifests:
+    name: Update Kubernetes Manifests
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    # Only run after a successful push to main (not on PRs)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write        # required to push the manifest commit back
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Use GITHUB_TOKEN so the bot push triggers ArgoCD's webhook
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Patch image tag in k8s/deployment.yaml
+        env:
+          IMAGE: ${{ needs.build-and-push.outputs.image }}
+          TAG: ${{ needs.build-and-push.outputs.short_sha }}
+        run: |
+          # Replace any line that references the rag-backend image
+          sed -i "s|image: .*rag-backend.*|image: ${IMAGE}:${TAG}|" k8s/deployment.yaml
+
+      - name: Commit and push updated manifest
+        env:
+          TAG: ${{ needs.build-and-push.outputs.short_sha }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add k8s/deployment.yaml
+          # Skip the commit entirely if the manifest didn't change (idempotent)
+          git diff --staged --quiet || \
+            git commit -m "ci: bump rag-backend image to ${TAG} [skip ci]"
+          git push

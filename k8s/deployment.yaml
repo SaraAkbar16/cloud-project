@@ -16,8 +16,10 @@ spec:
     spec:
       containers:
       - name: app-container
-        image: rag-backend:local
-        imagePullPolicy: Never
+        # Image is updated automatically by the CI/CD workflow on every push to main.
+        # Format: ghcr.io/<your-github-username>/rag-backend:<short-sha>
+        image: ghcr.io/YOUR_GITHUB_USERNAME/rag-backend:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
         resources:
